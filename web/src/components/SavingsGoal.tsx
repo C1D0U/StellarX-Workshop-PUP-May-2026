@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import {
   contractConfigured,
   readSavingsState,
@@ -13,27 +13,45 @@ export default function SavingsGoal({ publicKey }: { publicKey: string | null })
   const configured = contractConfigured();
   const [state, setState] = useState<SavingsState | null>(null);
   const [loading, setLoading] = useState(configured);
+  const [refreshToken, setRefreshToken] = useState(0);
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
-  const refresh = useCallback(async () => {
+  const refresh = async () => {
     if (!configured) return;
     setLoading(true);
     setError('');
-    try {
-      setState(await readSavingsState());
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to read contract');
-    } finally {
-      setLoading(false);
-    }
-  }, [configured]);
+    setRefreshToken((token) => token + 1);
+  };
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (!configured) return;
+
+    let active = true;
+
+    const loadState = async () => {
+      try {
+        const nextState = await readSavingsState();
+        if (!active) return;
+        setState(nextState);
+      } catch (e: unknown) {
+        if (!active) return;
+        setError(e instanceof Error ? e.message : 'Failed to read contract');
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadState();
+
+    return () => {
+      active = false;
+    };
+  }, [configured, refreshToken]);
 
   const contribute = async () => {
     if (!publicKey) return;
@@ -94,7 +112,7 @@ export default function SavingsGoal({ publicKey }: { publicKey: string | null })
         Savings Goal (Soroban)
       </h2>
 
-      {loading && <p className="text-sm text-gray-400">Reading contract state…</p>}
+      {loading && <p className="text-sm text-gray-400">Reading contract state...</p>}
 
       {!loading && state && (
         <>
@@ -123,7 +141,7 @@ export default function SavingsGoal({ publicKey }: { publicKey: string | null })
               disabled={busy || !publicKey || !amount}
               className="rounded bg-indigo-600 px-4 py-2 font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
             >
-              {busy ? 'Working…' : 'Contribute'}
+              {busy ? 'Working...' : 'Contribute'}
             </button>
           </div>
           {!publicKey && (
